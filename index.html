@@ -190,7 +190,6 @@
 </head>
 <body>
 
-<!-- ====== AUTH ====== -->
 <div id="authScreen">
   <h2>📑 網頁書籤</h2>
   <p>登入後即可管理你的書籤收藏</p>
@@ -207,7 +206,6 @@
   </div>
 </div>
 
-<!-- ====== APP ====== -->
 <div id="app">
   <div class="top-bar">
     <h1>📑 書籤紀錄本</h1>
@@ -217,7 +215,6 @@
     </div>
   </div>
 
-  <!-- 新增書籤表單 -->
   <div class="form-box">
     <div class="form-group date-group">
       <label>日期</label>
@@ -225,7 +222,7 @@
     </div>
     <div class="form-group url-group">
       <label>網址 (URL)</label>
-      <input type="url" id="inputUrl" placeholder="https://example.com" onkeypress="if(event.key==='Enter')addRecord()">
+      <input type="url" id="inputUrl" placeholder="https://example.com" oninput="autoFillLastSegment()" onkeypress="if(event.key==='Enter')addRecord()">
     </div>
     <div class="form-group title-group">
       <label>標題 (選填)</label>
@@ -234,7 +231,6 @@
     <button class="primary" onclick="addRecord()">新增</button>
   </div>
 
-  <!-- 搜尋 -->
   <div class="search-box">
     <input type="text" id="searchInput" placeholder="搜尋書籤標題或網址..." oninput="renderCards()">
     <span class="count-label" id="countLabel"></span>
@@ -312,6 +308,36 @@ function getFaviconUrl(url) {
   try { const d = new URL(url).origin; return `https://www.google.com/s2/favicons?sz=64&domain=${d}`; }
   catch { return ''; }
 }
+
+/* ============================================================
+   自動選取最後一節網址作為標題
+   ============================================================ */
+window.autoFillLastSegment = function() {
+  const urlInput = document.getElementById('inputUrl');
+  const titleInput = document.getElementById('inputTitle');
+  
+  // 只有在標題目前是空的，或是使用者還沒手動更改時才自動填入
+  if (urlInput.value.trim() !== "") {
+    try {
+      let urlStr = urlInput.value.trim();
+      // 如果缺協定，補上以便 URL 解析
+      if (!/^https?:\/\//i.test(urlStr)) urlStr = 'https://' + urlStr;
+      
+      const urlObj = new URL(urlStr);
+      // 移除網址末端的多餘斜線並切碎
+      const segments = urlObj.pathname.split('/').filter(Boolean);
+      
+      if (segments.length > 0) {
+        titleInput.value = segments[segments.length - 1];
+      } else {
+        // 如果網址沒有路徑節點 (例如只有主域名)，就改用 domain
+        titleInput.value = urlObj.hostname.replace('www.', '');
+      }
+    } catch (e) {
+      // 網址尚未完整，暫不處理
+    }
+  }
+};
 
 /* ============================================================
    AUTH
@@ -457,8 +483,8 @@ window.renderCards = function() {
     const card = document.createElement('div');
     card.className = 'card';
 
-    // 嘗試用 WordPress mshots 取縮圖，失敗改顯示 favicon
-    const thumbSrc = `https://s.wordpress.com/mshots/v1/${encodeURIComponent(item.url)}?w=480`;
+    // 換成更穩定的 thum.io 免費網頁截圖服務，若不行再透過 onerror 切換到高清 Favicon
+    const thumbSrc = `https://image.thum.io/get/width/400/crop/800/${item.url}`;
     const faviconSrc = getFaviconUrl(item.url);
 
     card.innerHTML = `
