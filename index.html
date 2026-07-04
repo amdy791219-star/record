@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>紀錄與書籤管理系統</title>
+  <title>網頁書籤</title>
   <style>
     :root {
       --primary: #4a90e2;
@@ -14,7 +14,6 @@
       --text-soft: #888888;
       --line: #e5e7eb;
       --coral: #e74c3c;
-      --tabs-bg: #e2e8f0;
     }
     * { box-sizing: border-box; }
     body {
@@ -70,25 +69,6 @@
     .top-bar h1 { margin: 0; color: #2c3e50; font-size: 22px; }
     .top-bar-right { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-soft); }
 
-    /* ---------- 分類 Tabs ---------- */
-    .tabs-container {
-      display: flex;
-      background: var(--tabs-bg);
-      padding: 4px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      width: fit-content;
-    }
-    .tab-btn {
-      background: none; border: none; padding: 8px 24px;
-      font-size: 14px; font-weight: 600; color: var(--text-soft);
-      cursor: pointer; border-radius: 6px; transition: all 0.2s;
-    }
-    .tab-btn.active {
-      background: var(--card); color: var(--primary);
-      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-    }
-
     /* ---------- Form ---------- */
     .form-box {
       background: var(--card);
@@ -109,8 +89,8 @@
     }
     .form-group input:focus { outline: none; border-color: var(--primary); }
     .form-group.date-group { flex: none; }
-    .form-group.url-group { flex: 2; min-width: 220px; }
-    .form-group.title-group { flex: 3; min-width: 160px; }
+    .form-group.url-group { flex: 1; min-width: 220px; }
+    .form-group.title-group { flex: 1; min-width: 160px; }
 
     /* ---------- Search ---------- */
     .search-box {
@@ -139,8 +119,6 @@
       transition: transform 0.15s, box-shadow 0.15s;
     }
     .card:hover { transform: translateY(-3px); box-shadow: 0 6px 18px rgba(0,0,0,0.1); }
-    
-    /* 書籤專用縮圖 */
     .thumbnail-box {
       width: 100%; height: 148px;
       background: linear-gradient(135deg, #e8edf2, #d4dde8);
@@ -152,20 +130,19 @@
       display: flex; align-items: center; justify-content: center;
       font-size: 36px; color: #aab;
     }
-    
     .card-content { padding: 14px; display: flex; flex-direction: column; flex: 1; }
     .card-date { font-size: 11px; color: var(--text-soft); margin-bottom: 4px; font-variant-numeric: tabular-nums; }
     .card-title {
       font-weight: 600; font-size: 14px; line-height: 1.4;
       margin-bottom: 6px; color: var(--text);
-      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
       overflow: hidden; flex: 1;
     }
     .card-url {
       font-size: 12px; color: var(--text-soft); margin-bottom: 12px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .card-actions { display: flex; justify-content: space-between; align-items: center; margin-top: auto; }
+    .card-actions { display: flex; justify-content: space-between; align-items: center; }
     .btn-visit {
       color: var(--primary); text-decoration: none; font-weight: 600;
       font-size: 13px; display: flex; align-items: center; gap: 4px;
@@ -206,7 +183,7 @@
     .loading { color: var(--text-soft); font-size: 14px; padding: 40px 0; text-align: center; grid-column: 1/-1; }
 
     @media (max-width: 560px) {
-      .form-box { flex-direction: column; align-items: stretch; }
+      .form-box { flex-direction: column; }
       .form-group.url-group, .form-group.title-group { min-width: 0; width: 100%; }
     }
   </style>
@@ -214,8 +191,8 @@
 <body>
 
 <div id="authScreen">
-  <h2>📑 系統登入</h2>
-  <p>登入後即可管理您的收藏與日常紀錄</p>
+  <h2>📑 網頁書籤</h2>
+  <p>登入後即可管理你的書籤收藏</p>
   <div id="authError"></div>
   <div id="nameFieldWrap" style="display:none;">
     <input type="text" id="inputName" placeholder="你的稱呼(選填)">
@@ -231,16 +208,11 @@
 
 <div id="app">
   <div class="top-bar">
-    <h1 id="appTitle">📑 收藏的項目</h1>
+    <h1>📑 書籤紀錄本</h1>
     <div class="top-bar-right">
       <span id="userLabel"></span>
       <button class="outline" onclick="handleLogout()">登出</button>
     </div>
-  </div>
-
-  <div class="tabs-container">
-    <button class="tab-btn active" id="tab-bookmarks" onclick="switchMode('bookmarks')">⭐ 收藏的項目</button>
-    <button class="tab-btn" id="tab-daily" onclick="switchMode('daily')">✍️ 日常紀錄</button>
   </div>
 
   <div class="form-box">
@@ -248,19 +220,19 @@
       <label>日期</label>
       <input type="date" id="inputDate">
     </div>
-    <div class="form-group url-group" id="urlGroup">
+    <div class="form-group url-group">
       <label>網址 (URL)</label>
       <input type="url" id="inputUrl" placeholder="https://example.com" oninput="autoFillLastSegment()" onkeypress="if(event.key==='Enter')addRecord()">
     </div>
     <div class="form-group title-group">
-      <label id="titleLabel">標題 (選填)</label>
+      <label>標題 (選填)</label>
       <input type="text" id="inputTitle" placeholder="自訂標題" onkeypress="if(event.key==='Enter')addRecord()">
     </div>
     <button class="primary" onclick="addRecord()">新增</button>
   </div>
 
   <div class="search-box">
-    <input type="text" id="searchInput" placeholder="搜尋內容..." oninput="renderCards()">
+    <input type="text" id="searchInput" placeholder="搜尋書籤標題或網址..." oninput="renderCards()">
     <span class="count-label" id="countLabel"></span>
   </div>
 
@@ -272,6 +244,9 @@
 <div id="toastHost"></div>
 
 <script type="module">
+/* ============================================================
+   Firebase — 與毛孩病歷本同一個專案
+   ============================================================ */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
@@ -279,7 +254,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   getFirestore, collection, doc, addDoc, deleteDoc,
-  query, where, onSnapshot, serverTimestamp
+  query, where, orderBy, onSnapshot, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -297,17 +272,15 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 /* ============================================================
-   狀態管理
+   狀態
    ============================================================ */
 let currentUser = null;
-let currentMode = 'bookmarks'; // 'bookmarks' | 'daily'
-let bookmarksRecords = [];     // 儲存書籤資料
-let dailyRecords = [];         // 儲存日常紀錄資料
+let records = [];       // 目前用戶的書籤清單(Firestore 即時同步)
 let unsubRecords = null;
-let authMode = 'login';
+let authMode = 'login'; // 'login' | 'signup'
 
 /* ============================================================
-   工具函數
+   工具
    ============================================================ */
 function toast(msg) {
   const host = document.getElementById('toastHost');
@@ -320,6 +293,7 @@ function toast(msg) {
 
 function fmtDate(str) {
   if (!str) return '';
+  // 輸入 YYYY-MM-DD，顯示 YY/MM/DD
   const parts = str.split('-');
   if (parts.length !== 3) return str;
   return `${parts[0].slice(-2)}/${parts[1]}/${parts[2]}`;
@@ -336,65 +310,37 @@ function getFaviconUrl(url) {
 }
 
 /* ============================================================
-   切換模式 (收藏項目 / 日常紀錄)
-   ============================================================ */
-window.switchMode = function(mode) {
-  if (currentMode === mode) return;
-  currentMode = mode;
-
-  // 更新 UI 狀態
-  document.getElementById('tab-bookmarks').classList.toggle('active', mode === 'bookmarks');
-  document.getElementById('tab-daily').classList.toggle('active', mode === 'daily');
-  
-  const urlGroup = document.getElementById('urlGroup');
-  const titleLabel = document.getElementById('titleLabel');
-  const inputTitle = document.getElementById('inputTitle');
-  const appTitle = document.getElementById('appTitle');
-
-  if (mode === 'bookmarks') {
-    appTitle.textContent = "📑 收藏的項目";
-    urlGroup.style.display = 'flex';
-    titleLabel.textContent = "標題 (選填)";
-    inputTitle.placeholder = "自訂書籤標題";
-  } else {
-    appTitle.textContent = "✍️ 日常紀錄本";
-    urlGroup.style.display = 'none';
-    titleLabel.textContent = "紀錄內容";
-    inputTitle.placeholder = "輸入今天的日常心情或記事...";
-  }
-
-  document.getElementById('searchInput').value = '';
-  // 重新訂閱該模式的資料
-  subscribeRecords();
-};
-
-/* ============================================================
-   自動填入標題 (書籤專用)
+   自動選取最後一節網址作為標題
    ============================================================ */
 window.autoFillLastSegment = function() {
-  if (currentMode !== 'bookmarks') return;
   const urlInput = document.getElementById('inputUrl');
   const titleInput = document.getElementById('inputTitle');
   
+  // 只有在標題目前是空的，或是使用者還沒手動更改時才自動填入
   if (urlInput.value.trim() !== "") {
     try {
       let urlStr = urlInput.value.trim();
+      // 如果缺協定，補上以便 URL 解析
       if (!/^https?:\/\//i.test(urlStr)) urlStr = 'https://' + urlStr;
       
       const urlObj = new URL(urlStr);
+      // 移除網址末端的多餘斜線並切碎
       const segments = urlObj.pathname.split('/').filter(Boolean);
       
       if (segments.length > 0) {
         titleInput.value = segments[segments.length - 1];
       } else {
+        // 如果網址沒有路徑節點 (例如只有主域名)，就改用 domain
         titleInput.value = urlObj.hostname.replace('www.', '');
       }
-    } catch (e) {}
+    } catch (e) {
+      // 網址尚未完整，暫不處理
+    }
   }
 };
 
 /* ============================================================
-   AUTH 驗證
+   AUTH
    ============================================================ */
 window.toggleAuthMode = function() {
   authMode = authMode === 'login' ? 'signup' : 'login';
@@ -439,115 +385,74 @@ onAuthStateChanged(auth, user => {
     document.getElementById('authScreen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.getElementById('userLabel').textContent = user.displayName || user.email;
+    // 設定今天日期
     document.getElementById('inputDate').value = new Date().toISOString().split('T')[0];
     subscribeRecords();
   } else {
     document.getElementById('authScreen').style.display = 'block';
     document.getElementById('app').style.display = 'none';
     if (unsubRecords) unsubRecords();
-    bookmarksRecords = [];
-    dailyRecords = [];
+    records = [];
   }
 });
 
 /* ============================================================
-   Firestore 資料訂閱 (依據 collection 切換)
+   Firestore: 書籤
    ============================================================ */
 function subscribeRecords() {
   if (unsubRecords) unsubRecords();
-  
-  // 依模式選擇不同的 Firestore collection
-  const collectionName = currentMode === 'bookmarks' ? 'bookmarks' : 'daily_records';
-  
   const q = query(
-    collection(db, collectionName),
+    collection(db, 'bookmarks'),
     where('ownerId', '==', currentUser.uid)
   );
-  
-  document.getElementById('listContainer').innerHTML = '<div class="loading">載入中...</div>';
-
   unsubRecords = onSnapshot(q, snap => {
-    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    
-    // 排序：新日期到舊日期 -> 同日期依建立時間新到舊
-    data.sort((a, b) => {
+    records = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // 依日期新到舊排序
+    records.sort((a, b) => {
       const da = a.date || '';
       const db_ = b.date || '';
       if (da !== db_) return da > db_ ? -1 : 1;
+      // 同日期再依建立時間排
       const ta = a.createdAt?.seconds || 0;
       const tb = b.createdAt?.seconds || 0;
       return tb - ta;
     });
-
-    if (currentMode === 'bookmarks') {
-      bookmarksRecords = data;
-    } else {
-      dailyRecords = data;
-    }
     renderCards();
   }, err => {
     console.error(err);
-    toast('讀取資料失敗:' + err.message);
+    toast('讀取書籤失敗:' + err.message);
   });
 }
 
-/* ============================================================
-   資料新增
-   ============================================================ */
 window.addRecord = async function() {
   const date = document.getElementById('inputDate').value;
   const url = document.getElementById('inputUrl').value.trim();
   const title = document.getElementById('inputTitle').value.trim();
 
-  if (currentMode === 'bookmarks') {
-    // 書籤模式驗證
-    if (!url) { toast('請輸入網址'); return; }
-    let finalUrl = url;
-    if (!/^https?:\/\//i.test(url)) finalUrl = 'https://' + url;
+  if (!url) { toast('請輸入網址'); return; }
+  let finalUrl = url;
+  if (!/^https?:\/\//i.test(url)) finalUrl = 'https://' + url;
 
-    try {
-      await addDoc(collection(db, 'bookmarks'), {
-        ownerId: currentUser.uid,
-        date,
-        url: finalUrl,
-        title: title || getDomain(finalUrl),
-        createdAt: serverTimestamp()
-      });
-      document.getElementById('inputUrl').value = '';
-      document.getElementById('inputTitle').value = '';
-      toast('書籤已新增');
-    } catch (e) {
-      toast('新增失敗:' + e.message);
-    }
-  } else {
-    // 日常紀錄模式驗證
-    if (!title) { toast('請輸入紀錄內容'); return; }
-
-    try {
-      await addDoc(collection(db, 'daily_records'), {
-        ownerId: currentUser.uid,
-        date,
-        title: title, // 此處 title 作為紀錄的文字主體
-        createdAt: serverTimestamp()
-      });
-      document.getElementById('inputTitle').value = '';
-      toast('日常紀錄已儲存');
-    } catch (e) {
-      toast('儲存失敗:' + e.message);
-    }
+  try {
+    await addDoc(collection(db, 'bookmarks'), {
+      ownerId: currentUser.uid,
+      date,
+      url: finalUrl,
+      title: title || getDomain(finalUrl),
+      createdAt: serverTimestamp()
+    });
+    document.getElementById('inputUrl').value = '';
+    document.getElementById('inputTitle').value = '';
+    toast('書籤已新增');
+  } catch (e) {
+    toast('新增失敗:' + e.message);
   }
 };
 
-/* ============================================================
-   資料刪除
-   ============================================================ */
 window.deleteRecord = async function(id) {
-  const msg = currentMode === 'bookmarks' ? '確定要刪除這個書籤嗎?' : '確定要刪除這筆紀錄嗎?';
-  if (!confirm(msg)) return;
-  
-  const collectionName = currentMode === 'bookmarks' ? 'bookmarks' : 'daily_records';
+  if (!confirm('確定要刪除這個書籤嗎?')) return;
   try {
-    await deleteDoc(doc(db, collectionName, id));
+    await deleteDoc(doc(db, 'bookmarks', id));
     toast('已刪除');
   } catch (e) {
     toast('刪除失敗:' + e.message);
@@ -555,28 +460,21 @@ window.deleteRecord = async function(id) {
 };
 
 /* ============================================================
-   渲染資料卡片
+   渲染書籤卡片
    ============================================================ */
 window.renderCards = function() {
   const container = document.getElementById('listContainer');
   const kw = document.getElementById('searchInput')?.value.trim().toLowerCase() || '';
-  
-  const currentList = currentMode === 'bookmarks' ? bookmarksRecords : dailyRecords;
 
-  // 搜尋過濾
   const filtered = kw
-    ? currentList.filter(r => 
-        (r.title || '').toLowerCase().includes(kw) || 
-        (r.url || '').toLowerCase().includes(kw)
-      )
-    : currentList;
+    ? records.filter(r => (r.title || '').toLowerCase().includes(kw) || (r.url || '').toLowerCase().includes(kw))
+    : records;
 
-  const typeName = currentMode === 'bookmarks' ? '筆書籤' : '筆紀錄';
   document.getElementById('countLabel').textContent =
-    kw ? `找到 ${filtered.length} / ${currentList.length} ${typeName}` : `共 ${currentList.length} ${typeName}`;
+    kw ? `找到 ${filtered.length} / ${records.length} 筆` : `共 ${records.length} 筆書籤`;
 
   if (!filtered.length) {
-    container.innerHTML = `<div class="empty-hint">${kw ? '找不到相符的內容' : '目前沒有資料，新增第一條吧！'}</div>`;
+    container.innerHTML = `<div class="empty-hint">${kw ? '找不到符合的書籤' : '還沒有任何書籤，新增第一條吧！'}</div>`;
     return;
   }
 
@@ -585,45 +483,29 @@ window.renderCards = function() {
     const card = document.createElement('div');
     card.className = 'card';
 
-    if (currentMode === 'bookmarks') {
-      // ===== 書籤模式卡片 UI =====
-      const thumbSrc = `https://image.thum.io/get/width/400/crop/800/${item.url}`;
-      const faviconSrc = getFaviconUrl(item.url);
+    // 換成更穩定的 thum.io 免費網頁截圖服務，若不行再透過 onerror 切換到高清 Favicon
+    const thumbSrc = `https://image.thum.io/get/width/400/crop/800/${item.url}`;
+    const faviconSrc = getFaviconUrl(item.url);
 
-      card.innerHTML = `
-        <div class="thumbnail-box">
-          <img id="thumb-${item.id}" src="${thumbSrc}" alt=""
-            onerror="this.style.display='none'; document.getElementById('fb-${item.id}').style.display='flex';">
-          <div class="thumb-fallback" id="fb-${item.id}" style="display:none;">
-            <img src="${faviconSrc}" style="width:48px;height:48px;border-radius:8px;"
-              onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><text y=%2220%22 font-size=%2220%22>🔗</text></svg>运维'">
-          </div>
+    card.innerHTML = `
+      <div class="thumbnail-box">
+        <img id="thumb-${item.id}" src="${thumbSrc}" alt=""
+          onerror="this.style.display='none'; document.getElementById('fb-${item.id}').style.display='flex';">
+        <div class="thumb-fallback" id="fb-${item.id}" style="display:none;">
+          <img src="${faviconSrc}" style="width:48px;height:48px;border-radius:8px;"
+            onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><text y=%2220%22 font-size=%2220%22>🔗</text></svg>'">
         </div>
-        <div class="card-content">
-          <div class="card-date">${fmtDate(item.date)}</div>
-          <div class="card-title">${escHtml(item.title || item.url)}</div>
-          <div class="card-url">${escHtml(getDomain(item.url))}</div>
-          <div class="card-actions">
-            <a href="${item.url}" target="_blank" rel="noopener" class="btn-visit">前往網站 →</a>
-            <button class="btn-delete" onclick="deleteRecord('${item.id}')">刪除</button>
-          </div>
+      </div>
+      <div class="card-content">
+        <div class="card-date">${fmtDate(item.date)}</div>
+        <div class="card-title">${escHtml(item.title || item.url)}</div>
+        <div class="card-url">${escHtml(getDomain(item.url))}</div>
+        <div class="card-actions">
+          <a href="${item.url}" target="_blank" rel="noopener" class="btn-visit">前往網站 →</a>
+          <button class="btn-delete" onclick="deleteRecord('${item.id}')">刪除</button>
         </div>
-      `;
-    } else {
-      // ===== 日常紀錄模式卡片 UI (簡潔純文字，無網址及縮圖欄位) =====
-      card.innerHTML = `
-        <div class="card-content" style="min-height: 120px;">
-          <div class="card-date">${fmtDate(item.date)}</div>
-          <div class="card-title" style="-webkit-line-clamp: 5; font-weight: normal; color: #2c3e50; font-size: 14px;">
-            ${escHtml(item.title).replace(/\n/g, '<br>')}
-          </div>
-          <div class="card-actions" style="margin-top: 14px;">
-            <span></span>
-            <button class="btn-delete" onclick="deleteRecord('${item.id}')">刪除</button>
-          </div>
-        </div>
-      `;
-    }
+      </div>
+    `;
     container.appendChild(card);
   });
 };
