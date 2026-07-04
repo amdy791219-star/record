@@ -83,14 +83,35 @@
     }
     .form-group { display: flex; flex-direction: column; gap: 5px; }
     .form-group label { font-weight: 600; font-size: 13px; color: var(--text-soft); }
-    .form-group input {
+    .form-group input, .form-group select {
       padding: 9px 12px; border: 1px solid var(--line);
       border-radius: 6px; font-size: 14px; color: var(--text);
+      background-color: #fff;
     }
-    .form-group input:focus { outline: none; border-color: var(--primary); }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--primary); }
     .form-group.date-group { flex: none; }
-    .form-group.url-group { flex: 1; min-width: 220px; }
+    .form-group.category-group { flex: none; min-width: 110px; }
+    .form-group.url-group { flex: 2; min-width: 220px; }
     .form-group.title-group { flex: 1; min-width: 160px; }
+
+    /* ---------- Tabs ---------- */
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+      border-bottom: 2px solid var(--line);
+      padding-bottom: 8px;
+    }
+    .tab-btn {
+      background: none; border: none; padding: 8px 16px; cursor: pointer;
+      font-size: 15px; font-weight: 600; color: var(--text-soft);
+      position: relative; transition: color 0.2s;
+    }
+    .tab-btn.active { color: var(--primary); }
+    .tab-btn.active::after {
+      content: ''; position: absolute; bottom: -10px; left: 0; right: 0;
+      height: 3px; background: var(--primary); border-radius: 2px;
+    }
 
     /* ---------- Search ---------- */
     .search-box {
@@ -119,19 +140,34 @@
       transition: transform 0.15s, box-shadow 0.15s;
     }
     .card:hover { transform: translateY(-3px); box-shadow: 0 6px 18px rgba(0,0,0,0.1); }
+    
+    /* 點網址縮圖可以直接看見網頁內容：使用 Iframe 縮放技術 */
     .thumbnail-box {
       width: 100%; height: 148px;
-      background: linear-gradient(135deg, #e8edf2, #d4dde8);
+      background: #e8edf2;
       position: relative; overflow: hidden; flex: none;
     }
-    .thumbnail-box img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .thumb-fallback {
-      width: 100%; height: 100%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 36px; color: #aab;
+    .thumbnail-box iframe {
+      width: 1024px; height: 592px; /* 模擬大解析度畫面 */
+      border: none;
+      transform: scale(0.25); /* 縮小成 1/4 放入卡片中 */
+      transform-origin: top left;
+      pointer-events: none; /* 防止在卡片內點擊到 iframe 內部網頁 */
     }
+    .thumbnail-overlay {
+      position: absolute; top:0; left:0; width:100%; height:100%;
+      background: transparent; z-index: 5;
+    }
+
     .card-content { padding: 14px; display: flex; flex-direction: column; flex: 1; }
-    .card-date { font-size: 11px; color: var(--text-soft); margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+    .card-meta-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .card-date { font-size: 11px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+    .card-badge {
+      font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 600;
+      background: #e1f5fe; color: #0288d1;
+    }
+    .card-badge.favorite { background: #fff3e0; color: #f57c00; }
+    
     .card-title {
       font-weight: 600; font-size: 14px; line-height: 1.4;
       margin-bottom: 6px; color: var(--text);
@@ -182,9 +218,9 @@
     }
     .loading { color: var(--text-soft); font-size: 14px; padding: 40px 0; text-align: center; grid-column: 1/-1; }
 
-    @media (max-width: 560px) {
-      .form-box { flex-direction: column; }
-      .form-group.url-group, .form-group.title-group { min-width: 0; width: 100%; }
+    @media (max-width: 768px) {
+      .form-box { flex-direction: column; align-items: stretch; }
+      .form-group.url-group, .form-group.title-group, .form-group.category-group, .form-group.date-group { min-width: 0; width: 100%; }
     }
   </style>
 </head>
@@ -220,6 +256,13 @@
       <label>日期</label>
       <input type="date" id="inputDate">
     </div>
+    <div class="form-group category-group">
+      <label>分類</label>
+      <select id="inputCategory">
+        <option value="normal">一般日常</option>
+        <option value="favorite">⭐ 我的最愛</option>
+      </select>
+    </div>
     <div class="form-group url-group">
       <label>網址 (URL)</label>
       <input type="url" id="inputUrl" placeholder="https://example.com" oninput="autoFillLastSegment()" onkeypress="if(event.key==='Enter')addRecord()">
@@ -229,6 +272,11 @@
       <input type="text" id="inputTitle" placeholder="自訂標題" onkeypress="if(event.key==='Enter')addRecord()">
     </div>
     <button class="primary" onclick="addRecord()">新增</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-normal" onclick="switchTab('normal')">一般日常</button>
+    <button class="tab-btn" id="tab-favorite" onclick="switchTab('favorite')">⭐ 我的最愛</button>
   </div>
 
   <div class="search-box">
@@ -278,6 +326,7 @@ let currentUser = null;
 let records = [];       // 目前用戶的書籤清單(Firestore 即時同步)
 let unsubRecords = null;
 let authMode = 'login'; // 'login' | 'signup'
+let currentTab = 'normal'; // 當前選中的分類標籤 'normal' | 'favorite'
 
 /* ============================================================
    工具
@@ -293,7 +342,6 @@ function toast(msg) {
 
 function fmtDate(str) {
   if (!str) return '';
-  // 輸入 YYYY-MM-DD，顯示 YY/MM/DD
   const parts = str.split('-');
   if (parts.length !== 3) return str;
   return `${parts[0].slice(-2)}/${parts[1]}/${parts[2]}`;
@@ -304,10 +352,15 @@ function getDomain(url) {
   catch { return url; }
 }
 
-function getFaviconUrl(url) {
-  try { const d = new URL(url).origin; return `https://www.google.com/s2/favicons?sz=64&domain=${d}`; }
-  catch { return ''; }
-}
+/* ============================================================
+   分類切換功能
+   ============================================================ */
+window.switchTab = function(tab) {
+  currentTab = tab;
+  document.getElementById('tab-normal').classList.toggle('active', tab === 'normal');
+  document.getElementById('tab-favorite').classList.toggle('active', tab === 'favorite');
+  renderCards();
+};
 
 /* ============================================================
    自動選取最後一節網址作為標題
@@ -316,25 +369,21 @@ window.autoFillLastSegment = function() {
   const urlInput = document.getElementById('inputUrl');
   const titleInput = document.getElementById('inputTitle');
   
-  // 只有在標題目前是空的，或是使用者還沒手動更改時才自動填入
   if (urlInput.value.trim() !== "") {
     try {
       let urlStr = urlInput.value.trim();
-      // 如果缺協定，補上以便 URL 解析
       if (!/^https?:\/\//i.test(urlStr)) urlStr = 'https://' + urlStr;
       
       const urlObj = new URL(urlStr);
-      // 移除網址末端的多餘斜線並切碎
       const segments = urlObj.pathname.split('/').filter(Boolean);
       
       if (segments.length > 0) {
         titleInput.value = segments[segments.length - 1];
       } else {
-        // 如果網址沒有路徑節點 (例如只有主域名)，就改用 domain
         titleInput.value = urlObj.hostname.replace('www.', '');
       }
     } catch (e) {
-      // 網址尚未完整，暫不處理
+      // 網址尚未完整
     }
   }
 };
@@ -385,7 +434,6 @@ onAuthStateChanged(auth, user => {
     document.getElementById('authScreen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.getElementById('userLabel').textContent = user.displayName || user.email;
-    // 設定今天日期
     document.getElementById('inputDate').value = new Date().toISOString().split('T')[0];
     subscribeRecords();
   } else {
@@ -407,12 +455,10 @@ function subscribeRecords() {
   );
   unsubRecords = onSnapshot(q, snap => {
     records = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // 依日期新到舊排序
     records.sort((a, b) => {
       const da = a.date || '';
       const db_ = b.date || '';
       if (da !== db_) return da > db_ ? -1 : 1;
-      // 同日期再依建立時間排
       const ta = a.createdAt?.seconds || 0;
       const tb = b.createdAt?.seconds || 0;
       return tb - ta;
@@ -426,6 +472,7 @@ function subscribeRecords() {
 
 window.addRecord = async function() {
   const date = document.getElementById('inputDate').value;
+  const category = document.getElementById('inputCategory').value;
   const url = document.getElementById('inputUrl').value.trim();
   const title = document.getElementById('inputTitle').value.trim();
 
@@ -437,6 +484,7 @@ window.addRecord = async function() {
     await addDoc(collection(db, 'bookmarks'), {
       ownerId: currentUser.uid,
       date,
+      category, // 儲存新欄位：'normal' 或 'favorite'
       url: finalUrl,
       title: title || getDomain(finalUrl),
       createdAt: serverTimestamp()
@@ -466,15 +514,22 @@ window.renderCards = function() {
   const container = document.getElementById('listContainer');
   const kw = document.getElementById('searchInput')?.value.trim().toLowerCase() || '';
 
+  // 1. 根據當前選擇的 Tab 進行分類過濾（關鍵：若 item.category 不存在，預設歸類在 'normal' 一般日常）
+  const categoryFiltered = records.filter(item => {
+    const itemCat = item.category || 'normal'; 
+    return itemCat === currentTab;
+  });
+
+  // 2. 再根據搜尋關鍵字過濾
   const filtered = kw
-    ? records.filter(r => (r.title || '').toLowerCase().includes(kw) || (r.url || '').toLowerCase().includes(kw))
-    : records;
+    ? categoryFiltered.filter(r => (r.title || '').toLowerCase().includes(kw) || (r.url || '').toLowerCase().includes(kw))
+    : categoryFiltered;
 
   document.getElementById('countLabel').textContent =
-    kw ? `找到 ${filtered.length} / ${records.length} 筆` : `共 ${records.length} 筆書籤`;
+    kw ? `找到 ${filtered.length} / ${categoryFiltered.length} 筆` : `共 ${categoryFiltered.length} 筆書籤`;
 
   if (!filtered.length) {
-    container.innerHTML = `<div class="empty-hint">${kw ? '找不到符合的書籤' : '還沒有任何書籤，新增第一條吧！'}</div>`;
+    container.innerHTML = `<div class="empty-hint">${kw ? '找不到符合的書籤' : '此分類下目前沒有任何書籤！'}</div>`;
     return;
   }
 
@@ -483,21 +538,20 @@ window.renderCards = function() {
     const card = document.createElement('div');
     card.className = 'card';
 
-    // 換成更穩定的 thum.io 免費網頁截圖服務，若不行再透過 onerror 切換到高清 Favicon
-    const thumbSrc = `https://image.thum.io/get/width/400/crop/800/${item.url}`;
-    const faviconSrc = getFaviconUrl(item.url);
+    const isFav = item.category === 'favorite';
+    const badgeText = isFav ? '⭐ 我的最愛' : '日常';
+    const badgeClass = isFav ? 'card-badge favorite' : 'card-badge';
 
     card.innerHTML = `
       <div class="thumbnail-box">
-        <img id="thumb-${item.id}" src="${thumbSrc}" alt=""
-          onerror="this.style.display='none'; document.getElementById('fb-${item.id}').style.display='flex';">
-        <div class="thumb-fallback" id="fb-${item.id}" style="display:none;">
-          <img src="${faviconSrc}" style="width:48px;height:48px;border-radius:8px;"
-            onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><text y=%2220%22 font-size=%2220%22>🔗</text></svg>'">
-        </div>
+        <iframe src="${item.url}" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe>
+        <div class="thumbnail-overlay"></div>
       </div>
       <div class="card-content">
-        <div class="card-date">${fmtDate(item.date)}</div>
+        <div class="card-meta-row">
+          <div class="card-date">${fmtDate(item.date)}</div>
+          <div class="${badgeClass}">${badgeText}</div>
+        </div>
         <div class="card-title">${escHtml(item.title || item.url)}</div>
         <div class="card-url">${escHtml(getDomain(item.url))}</div>
         <div class="card-actions">
