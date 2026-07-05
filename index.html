@@ -152,7 +152,6 @@
       width: 100%; height: 100%; object-fit: cover; display: none;
     }
     
-    /* 載入中的骨架屏動畫 */
     .thumb-loading {
       position: absolute; top:0; left:0; width:100%; height:100%;
       background: linear-gradient(90deg, #f0f2f5 25%, #e6e8eb 50%, #f0f2f5 75%);
@@ -348,6 +347,7 @@ let records = [];
 let unsubRecords = null;
 let authMode = 'login'; 
 let currentTab = 'normal'; 
+let cardObserver = null; // 懶加載觀察器
 
 /* ============================================================
    工具
@@ -539,7 +539,84 @@ window.deleteRecord = async function(id) {
 };
 
 /* ============================================================
-   渲染書籤卡片 (包含優化後的智慧型預覽載入與 Timeout 攔截)
+   初始化懶加載 IntersectionObserver 機制
+   ============================================================ */
+function initCardObserver() {
+  if (cardObserver) cardObserver.disconnect();
+
+  cardObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+      // 當節點進入螢幕範圍內 (或靠近時)
+      if (entry.isIntersecting) {
+        const cardEl = entry.target;
+        const id = cardEl.dataset.id;
+        const url = cardEl.dataset.url;
+        const title = cardEl.dataset.title;
+
+        // 停止觀察此節點，避免重複觸發
+        observer.unobserve(cardEl);
+
+        // 真正開始處理該卡片的圖片載入
+        loadImagesForCard(id, url, title);
+      }
+    });
+  }, {
+    rootMargin: '150px 0px' // 提早 150px 預先載入，讓使用者滾動時感覺不到延遲
+  });
+}
+
+/* ============================================================
+   執行單個卡片的圖片加載與超時判斷邏輯
+   ============================================================ */
+function loadImagesForCard(id, url, title) {
+  const imgEl = document.getElementById(`thumb-${id}`);
+  const fbEl = document.getElementById(`fb-${id}`);
+  const loadingEl = document.getElementById(`loading-${id}`);
+  const fbFavEl = document.getElementById(`fb-fav-${id}`);
+  
+  if (!imgEl) return;
+
+  const previewImgSrc = `https://mini.s-shot.ru/1024x768/JPEG/400/Z100/?${encodeURIComponent(url)}`;
+  const faviconSrc = getFaviconUrl(url);
+  
+  let isSettled = false;
+
+  const switchToFallback = () => {
+    if (isSettled) return;
+    isSettled = true;
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (imgEl) imgEl.style.display = 'none';
+    if (fbEl) {
+      // 延遲載入備用 Favicon
+      if (fbFavEl) fbFavEl.src = faviconSrc;
+      fbEl.style.display = 'flex';
+    }
+  };
+
+  // 4秒內 API 未回應，直接進入 Fallback
+  const timeoutId = setTimeout(() => {
+    switchToFallback();
+  }, 4000);
+
+  imgEl.onload = () => {
+    clearTimeout(timeoutId);
+    if (isSettled) return;
+    isSettled = true;
+    if (loadingEl) loadingEl.style.display = 'none';
+    imgEl.style.display = 'block';
+  };
+
+  imgEl.onerror = () => {
+    clearTimeout(timeoutId);
+    switchToFallback();
+  };
+
+  // 觸發載入
+  imgEl.src = previewImgSrc;
+}
+
+/* ============================================================
+   渲染書籤卡片 (已加入懶加載資料埋設)
    ============================================================ */
 window.renderCards = function() {
   const container = document.getElementById('listContainer');
@@ -562,17 +639,22 @@ window.renderCards = function() {
     return;
   }
 
+  // 重新初始化觀察器
+  initCardObserver();
+
   container.innerHTML = '';
   filtered.forEach(item => {
     const card = document.createElement('div');
     card.className = 'card';
+    
+    // 【效能優化】將資料埋在節點屬性上，交給 Observer 觸發載入
+    card.dataset.id = item.id;
+    card.dataset.url = item.url;
+    card.dataset.title = item.title || getDomain(item.url);
 
     const isFav = item.category === 'favorite';
     const badgeText = isFav ? '⭐ 我的最愛' : '日常';
     const badgeClass = isFav ? 'card-badge favorite' : 'card-badge';
-    
-    const faviconSrc = getFaviconUrl(item.url);
-    const previewImgSrc = `https://mini.s-shot.ru/1024x768/JPEG/400/Z100/?${encodeURIComponent(item.url)}`;
 
     card.innerHTML = `
       <div class="thumbnail-box" id="thumb-box-${item.id}">
@@ -581,7 +663,7 @@ window.renderCards = function() {
         <img class="preview-img" id="thumb-${item.id}" alt="網頁預覽">
         
         <div class="thumb-fallback-card" id="fb-${item.id}" style="display:none;">
-          <img class="fallback-fav" src="${faviconSrc}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><text y=%2220%22 font-size=%2220%22>🔗</text></svg>'">
+          <img class="fallback-fav" id="fb-fav-${item.id}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><text y=%2220%22 font-size=%2220%22>🔗</text></svg>_'">
           <div class="fallback-text">${escHtml(item.title || getDomain(item.url))}</div>
         </div>
       </div>
@@ -600,43 +682,8 @@ window.renderCards = function() {
     `;
     container.appendChild(card);
 
-    // 【核心邏輯優化】透過 JS 動態監聽載入，並加入 4 秒強行 Timeout 機制
-    const imgEl = card.querySelector(`#thumb-${item.id}`);
-    const fbEl = card.querySelector(`#fb-${item.id}`);
-    const loadingEl = card.querySelector(`#loading-${item.id}`);
-    
-    let isSettled = false;
-
-    // 觸發 Fallback 顯示的內建函式
-    const switchToFallback = () => {
-      if (isSettled) return;
-      isSettled = true;
-      if (loadingEl) loadingEl.style.display = 'none';
-      if (imgEl) imgEl.style.display = 'none';
-      if (fbEl) fbEl.style.display = 'flex';
-    };
-
-    // 設定 4 秒超時：若第三方 API 4 秒內沒回傳，主動切換至備用 Favicon 畫面
-    const timeoutId = setTimeout(() => {
-      switchToFallback();
-    }, 4000);
-
-    imgEl.onload = () => {
-      clearTimeout(timeoutId);
-      if (isSettled) return;
-      isSettled = true;
-      
-      if (loadingEl) loadingEl.style.display = 'none';
-      imgEl.style.display = 'block';
-    };
-
-    imgEl.onerror = () => {
-      clearTimeout(timeoutId);
-      switchToFallback();
-    };
-
-    // 開始載入圖片
-    imgEl.src = previewImgSrc;
+    // 註冊觀察這張卡片
+    cardObserver.observe(card);
   });
 };
 
