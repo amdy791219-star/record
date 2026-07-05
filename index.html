@@ -313,7 +313,7 @@
 
 <script type="module">
 /* ============================================================
-   Firebase — 與毛孩病歷本同一個專案
+   Firebase
    ============================================================ */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
@@ -539,7 +539,7 @@ window.deleteRecord = async function(id) {
 };
 
 /* ============================================================
-   懶加載與 OG 圖片智慧抓取機制
+   雙保險智慧加載機制：OG 圖片優先 -> 失敗自動切換 s-shot.ru 網頁截圖
    ============================================================ */
 function initCardObserver() {
   if (cardObserver) cardObserver.disconnect();
@@ -548,14 +548,13 @@ function initCardObserver() {
       if (entry.isIntersecting) {
         const cardEl = entry.target;
         observer.unobserve(cardEl);
-        fetchOgImageAndLoad(cardEl.dataset.id, cardEl.dataset.url);
+        tryLoadSmartImage(cardEl.dataset.id, cardEl.dataset.url);
       }
     });
   }, { rootMargin: '150px 0px' });
 }
 
-// 【核心新邏輯】：繞過 CORS 抓取目標網頁的 og:image
-async function fetchOgImageAndLoad(id, url) {
+async function tryLoadSmartImage(id, url) {
   const imgEl = document.getElementById(`thumb-${id}`);
   const fbEl = document.getElementById(`fb-${id}`);
   const loadingEl = document.getElementById(`loading-${id}`);
@@ -563,6 +562,7 @@ async function fetchOgImageAndLoad(id, url) {
   
   if (!imgEl) return;
 
+  // 100% 失敗時的墊底方案（Favicon 卡片）
   const switchToFallback = () => {
     if (loadingEl) loadingEl.style.display = 'none';
     if (imgEl) imgEl.style.display = 'none';
@@ -572,13 +572,33 @@ async function fetchOgImageAndLoad(id, url) {
     }
   };
 
+  // 【保險第二軌】：當 OG 抓不到或失敗，立刻切換回原本的 s-shot 截圖
+  const switchToScreenshot = () => {
+    const previewImgSrc = `https://mini.s-shot.ru/1024x768/JPEG/400/Z100/?${encodeURIComponent(url)}`;
+    
+    // 設定 s-shot 4 秒內沒下載完就降級成 Favicon 小圖卡
+    const ssTimeout = setTimeout(() => {
+      switchToFallback();
+    }, 4000);
+
+    imgEl.onload = () => {
+      clearTimeout(ssTimeout);
+      if (loadingEl) loadingEl.style.display = 'none';
+      imgEl.style.display = 'block';
+    };
+    imgEl.onerror = () => {
+      clearTimeout(ssTimeout);
+      switchToFallback();
+    };
+    imgEl.src = previewImgSrc;
+  };
+
+  // 【優先第一軌】：試圖抓取 og:image
   try {
-    // 使用免費無限制的 CORS Proxy 讀取網頁 HTML 原始碼
     const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
     
-    // 設定 3 秒內沒抓到 HTML 就直接跳 Fallback，不讓使用者乾等
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const timeoutId = setTimeout(() => controller.abort(), 2000); // 縮短至 2 秒，不行就換 s-shot
 
     const response = await fetch(proxyUrl, { signal: controller.signal });
     clearTimeout(timeoutId);
@@ -587,33 +607,30 @@ async function fetchOgImageAndLoad(id, url) {
     const data = await response.json();
     const htmlText = data.contents;
 
-    // 用正規表達式快速撈出 og:image 的內容
     const ogImageMatch = htmlText.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) || 
                          htmlText.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
 
     if (ogImageMatch && ogImageMatch[1]) {
       let ogImageUrl = ogImageMatch[1];
-      
-      // 如果撈出來的是相對路徑（例如 /img/cover.jpg），將它補滿成絕對路徑
       if (ogImageUrl.startsWith('/')) {
         const urlObj = new URL(url);
         ogImageUrl = urlObj.origin + ogImageUrl;
       }
 
-      // 將圖片塞給 <img> 標籤
       imgEl.onload = () => {
         if (loadingEl) loadingEl.style.display = 'none';
         imgEl.style.display = 'block';
       };
-      imgEl.onerror = () => switchToFallback();
+      // 如果 OG 圖下載出錯，立刻轉用 s-shot
+      imgEl.onerror = () => switchToScreenshot();
       imgEl.src = ogImageUrl;
     } else {
-      // 沒找到 og:image 標籤，直接用高質感 Favicon 卡片替代
-      switchToFallback();
+      // 沒找到 OG 圖，轉用 s-shot
+      switchToScreenshot();
     }
   } catch (e) {
-    // 遇到 CORS 代理失敗或連線超時，直接優雅降級到 Favicon 卡片
-    switchToFallback();
+    // 代理被防火牆檔掉或連線超時，直接切換為 s-shot 截圖
+    switchToScreenshot();
   }
 }
 
