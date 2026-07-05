@@ -145,23 +145,38 @@
     
     .thumbnail-box {
       width: 100%; height: 148px;
-      background: linear-gradient(135deg, #e0e6ed, #b3c6d8);
+      background: #eef2f5;
       position: relative; overflow: hidden; flex: none;
     }
-    .thumbnail-box img {
-      width: 100%; height: 100%; object-fit: cover; display: block;
+    .thumbnail-box img.preview-img {
+      width: 100%; height: 100%; object-fit: cover; display: none;
     }
+    
+    /* 載入中的骨架屏動畫 */
+    .thumb-loading {
+      position: absolute; top:0; left:0; width:100%; height:100%;
+      background: linear-gradient(90deg, #f0f2f5 25%, #e6e8eb 50%, #f0f2f5 75%);
+      background-size: 200% 100%;
+      animation: loading-shimmer 1.5s infinite;
+    }
+    @keyframes loading-shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
     .thumb-fallback-card {
       position: absolute; top:0; left:0; width:100%; height:100%;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      padding: 16px; text-align: center; background: linear-gradient(135deg, #74abe2, #557394);
+      padding: 16px; text-align: center; 
+      background: linear-gradient(135deg, #74abe2, #557394);
       color: #fff;
     }
     .thumb-fallback-card .fallback-fav {
-      width: 32px; height: 32px; border-radius: 6px; background: #fff; padding: 2px; margin-bottom: 8px;
+      width: 36px; height: 36px; border-radius: 8px; background: #fff; padding: 4px; margin-bottom: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
     }
     .thumb-fallback-card .fallback-text {
-      font-size: 12px; font-weight: 600; max-width: 100%;
+      font-size: 13px; font-weight: 600; max-width: 100%;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.95;
     }
 
@@ -489,12 +504,11 @@ window.addRecord = async function() {
   let finalUrl = url;
   if (!/^https?:\/\//i.test(url)) finalUrl = 'https://' + url;
 
-  // 【新增功能】檢查重複網址
   const duplicate = records.find(r => r.url.toLowerCase() === finalUrl.toLowerCase());
   if (duplicate) {
     const catName = (duplicate.category === 'favorite') ? '⭐ 我的最愛' : '一般日常';
     const confirmAdd = confirm(`⚠️ 注意：此網址已經存在於【${catName}】分類中！\n標題為：${duplicate.title}\n\n確定還要重複新增嗎？`);
-    if (!confirmAdd) return; // 使用者按取消，終止新增
+    if (!confirmAdd) return;
   }
 
   try {
@@ -525,7 +539,7 @@ window.deleteRecord = async function(id) {
 };
 
 /* ============================================================
-   渲染書籤卡片
+   渲染書籤卡片 (包含優化後的智慧型預覽載入與 Timeout 攔截)
    ============================================================ */
 window.renderCards = function() {
   const container = document.getElementById('listContainer');
@@ -558,14 +572,13 @@ window.renderCards = function() {
     const badgeClass = isFav ? 'card-badge favorite' : 'card-badge';
     
     const faviconSrc = getFaviconUrl(item.url);
-    
-    // 改用更強大、專門穿透保護的獨立無頭瀏覽器截圖端點（不帶 API key 限制，直出畫面）
     const previewImgSrc = `https://mini.s-shot.ru/1024x768/JPEG/400/Z100/?${encodeURIComponent(item.url)}`;
 
     card.innerHTML = `
-      <div class="thumbnail-box">
-        <img id="thumb-${item.id}" src="${previewImgSrc}" alt="網頁預覽" 
-          onerror="document.getElementById('fb-${item.id}').style.display='flex'; this.style.display='none';">
+      <div class="thumbnail-box" id="thumb-box-${item.id}">
+        <div class="thumb-loading" id="loading-${item.id}"></div>
+        
+        <img class="preview-img" id="thumb-${item.id}" alt="網頁預覽">
         
         <div class="thumb-fallback-card" id="fb-${item.id}" style="display:none;">
           <img class="fallback-fav" src="${faviconSrc}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><text y=%2220%22 font-size=%2220%22>🔗</text></svg>'">
@@ -586,6 +599,44 @@ window.renderCards = function() {
       </div>
     `;
     container.appendChild(card);
+
+    // 【核心邏輯優化】透過 JS 動態監聽載入，並加入 4 秒強行 Timeout 機制
+    const imgEl = card.querySelector(`#thumb-${item.id}`);
+    const fbEl = card.querySelector(`#fb-${item.id}`);
+    const loadingEl = card.querySelector(`#loading-${item.id}`);
+    
+    let isSettled = false;
+
+    // 觸發 Fallback 顯示的內建函式
+    const switchToFallback = () => {
+      if (isSettled) return;
+      isSettled = true;
+      if (loadingEl) loadingEl.style.display = 'none';
+      if (imgEl) imgEl.style.display = 'none';
+      if (fbEl) fbEl.style.display = 'flex';
+    };
+
+    // 設定 4 秒超時：若第三方 API 4 秒內沒回傳，主動切換至備用 Favicon 畫面
+    const timeoutId = setTimeout(() => {
+      switchToFallback();
+    }, 4000);
+
+    imgEl.onload = () => {
+      clearTimeout(timeoutId);
+      if (isSettled) return;
+      isSettled = true;
+      
+      if (loadingEl) loadingEl.style.display = 'none';
+      imgEl.style.display = 'block';
+    };
+
+    imgEl.onerror = () => {
+      clearTimeout(timeoutId);
+      switchToFallback();
+    };
+
+    // 開始載入圖片
+    imgEl.src = previewImgSrc;
   });
 };
 
