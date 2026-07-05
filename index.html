@@ -101,6 +101,7 @@
       margin-bottom: 16px;
       border-bottom: 2px solid var(--line);
       padding-bottom: 8px;
+      width: 100%;
     }
     .tab-btn {
       background: none; border: none; padding: 8px 16px; cursor: pointer;
@@ -115,7 +116,7 @@
 
     /* ---------- Search ---------- */
     .search-box {
-      display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;
+      display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap; width: 100%;
     }
     .search-box input {
       flex: 1; min-width: 200px; padding: 9px 12px;
@@ -129,6 +130,7 @@
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
       gap: 18px;
+      width: 100%;
     }
     .card {
       background: var(--card);
@@ -141,22 +143,28 @@
     }
     .card:hover { transform: translateY(-3px); box-shadow: 0 6px 18px rgba(0,0,0,0.1); }
     
-    /* 點網址縮圖可以直接看見網頁內容：使用 Iframe 縮放技術 */
+    /* 改良版縮圖外殼：確保絕對不留白 */
     .thumbnail-box {
       width: 100%; height: 148px;
-      background: #e8edf2;
+      background: linear-gradient(135deg, #e0e6ed, #b3c6d8);
       position: relative; overflow: hidden; flex: none;
     }
-    .thumbnail-box iframe {
-      width: 1024px; height: 592px; /* 模擬大解析度畫面 */
-      border: none;
-      transform: scale(0.25); /* 縮小成 1/4 放入卡片中 */
-      transform-origin: top left;
-      pointer-events: none; /* 防止在卡片內點擊到 iframe 內部網頁 */
+    .thumbnail-box img {
+      width: 100%; height: 100%; object-fit: cover; display: block;
     }
-    .thumbnail-overlay {
+    /* 當完全抓不到圖時的「質感系文字替代圖卡」 */
+    .thumb-fallback-card {
       position: absolute; top:0; left:0; width:100%; height:100%;
-      background: transparent; z-index: 5;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 16px; text-align: center; background: linear-gradient(135deg, #74abe2, #557394);
+      color: #fff;
+    }
+    .thumb-fallback-card .fallback-fav {
+      width: 32px; height: 32px; border-radius: 6px; background: #fff; padding: 2px; margin-bottom: 8px;
+    }
+    .thumb-fallback-card .fallback-text {
+      font-size: 12px; font-weight: 600; max-width: 100%;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.95;
     }
 
     .card-content { padding: 14px; display: flex; flex-direction: column; flex: 1; }
@@ -323,10 +331,10 @@ const db = getFirestore(app);
    狀態
    ============================================================ */
 let currentUser = null;
-let records = [];       // 目前用戶的書籤清單(Firestore 即時同步)
+let records = [];       
 let unsubRecords = null;
-let authMode = 'login'; // 'login' | 'signup'
-let currentTab = 'normal'; // 當前選中的分類標籤 'normal' | 'favorite'
+let authMode = 'login'; 
+let currentTab = 'normal'; 
 
 /* ============================================================
    工具
@@ -350,6 +358,11 @@ function fmtDate(str) {
 function getDomain(url) {
   try { return new URL(url).hostname.replace('www.', ''); }
   catch { return url; }
+}
+
+function getFaviconUrl(url) {
+  try { const d = new URL(url).origin; return `https://www.google.com/s2/favicons?sz=64&domain=${d}`; }
+  catch { return ''; }
 }
 
 /* ============================================================
@@ -382,9 +395,7 @@ window.autoFillLastSegment = function() {
       } else {
         titleInput.value = urlObj.hostname.replace('www.', '');
       }
-    } catch (e) {
-      // 網址尚未完整
-    }
+    } catch (e) { }
   }
 };
 
@@ -484,7 +495,7 @@ window.addRecord = async function() {
     await addDoc(collection(db, 'bookmarks'), {
       ownerId: currentUser.uid,
       date,
-      category, // 儲存新欄位：'normal' 或 'favorite'
+      category, 
       url: finalUrl,
       title: title || getDomain(finalUrl),
       createdAt: serverTimestamp()
@@ -514,13 +525,11 @@ window.renderCards = function() {
   const container = document.getElementById('listContainer');
   const kw = document.getElementById('searchInput')?.value.trim().toLowerCase() || '';
 
-  // 1. 根據當前選擇的 Tab 進行分類過濾（關鍵：若 item.category 不存在，預設歸類在 'normal' 一般日常）
   const categoryFiltered = records.filter(item => {
     const itemCat = item.category || 'normal'; 
     return itemCat === currentTab;
   });
 
-  // 2. 再根據搜尋關鍵字過濾
   const filtered = kw
     ? categoryFiltered.filter(r => (r.title || '').toLowerCase().includes(kw) || (r.url || '').toLowerCase().includes(kw))
     : categoryFiltered;
@@ -541,11 +550,20 @@ window.renderCards = function() {
     const isFav = item.category === 'favorite';
     const badgeText = isFav ? '⭐ 我的最愛' : '日常';
     const badgeClass = isFav ? 'card-badge favorite' : 'card-badge';
+    
+    // 取得該網站的 Favicon 與 Linkpreview 預覽圖
+    const faviconSrc = getFaviconUrl(item.url);
+    const previewImgSrc = `https://api.linkpreview.net/?key=common_fallback&q=${encodeURIComponent(item.url)}`;
 
     card.innerHTML = `
       <div class="thumbnail-box">
-        <iframe src="${item.url}" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe>
-        <div class="thumbnail-overlay"></div>
+        <img id="thumb-${item.id}" src="${previewImgSrc}" alt="" 
+          onerror="document.getElementById('fb-${item.id}').style.display='flex'; this.style.display='none';">
+        
+        <div class="thumb-fallback-card" id="fb-${item.id}" style="display:none;">
+          <img class="fallback-fav" src="${faviconSrc}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><text y=%2220%22 font-size=%2220%22>🔗</text></svg>'">
+          <div class="fallback-text">${escHtml(item.title || getDomain(item.url))}</div>
+        </div>
       </div>
       <div class="card-content">
         <div class="card-meta-row">
