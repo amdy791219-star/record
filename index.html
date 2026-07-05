@@ -347,7 +347,7 @@ let records = [];
 let unsubRecords = null;
 let authMode = 'login'; 
 let currentTab = 'normal'; 
-let cardObserver = null; // 懶加載觀察器
+let cardObserver = null; 
 
 /* ============================================================
    工具
@@ -539,36 +539,23 @@ window.deleteRecord = async function(id) {
 };
 
 /* ============================================================
-   初始化懶加載 IntersectionObserver 機制
+   懶加載與 OG 圖片智慧抓取機制
    ============================================================ */
 function initCardObserver() {
   if (cardObserver) cardObserver.disconnect();
-
   cardObserver = new IntersectionObserver((entries, observer) => {
     entries.forEach(entry => {
-      // 當節點進入螢幕範圍內 (或靠近時)
       if (entry.isIntersecting) {
         const cardEl = entry.target;
-        const id = cardEl.dataset.id;
-        const url = cardEl.dataset.url;
-        const title = cardEl.dataset.title;
-
-        // 停止觀察此節點，避免重複觸發
         observer.unobserve(cardEl);
-
-        // 真正開始處理該卡片的圖片載入
-        loadImagesForCard(id, url, title);
+        fetchOgImageAndLoad(cardEl.dataset.id, cardEl.dataset.url);
       }
     });
-  }, {
-    rootMargin: '150px 0px' // 提早 150px 預先載入，讓使用者滾動時感覺不到延遲
-  });
+  }, { rootMargin: '150px 0px' });
 }
 
-/* ============================================================
-   執行單個卡片的圖片加載與超時判斷邏輯
-   ============================================================ */
-function loadImagesForCard(id, url, title) {
+// 【核心新邏輯】：繞過 CORS 抓取目標網頁的 og:image
+async function fetchOgImageAndLoad(id, url) {
   const imgEl = document.getElementById(`thumb-${id}`);
   const fbEl = document.getElementById(`fb-${id}`);
   const loadingEl = document.getElementById(`loading-${id}`);
@@ -576,47 +563,62 @@ function loadImagesForCard(id, url, title) {
   
   if (!imgEl) return;
 
-  const previewImgSrc = `https://mini.s-shot.ru/1024x768/JPEG/400/Z100/?${encodeURIComponent(url)}`;
-  const faviconSrc = getFaviconUrl(url);
-  
-  let isSettled = false;
-
   const switchToFallback = () => {
-    if (isSettled) return;
-    isSettled = true;
     if (loadingEl) loadingEl.style.display = 'none';
     if (imgEl) imgEl.style.display = 'none';
     if (fbEl) {
-      // 延遲載入備用 Favicon
-      if (fbFavEl) fbFavEl.src = faviconSrc;
+      if (fbFavEl) fbFavEl.src = getFaviconUrl(url);
       fbEl.style.display = 'flex';
     }
   };
 
-  // 4秒內 API 未回應，直接進入 Fallback
-  const timeoutId = setTimeout(() => {
-    switchToFallback();
-  }, 4000);
+  try {
+    // 使用免費無限制的 CORS Proxy 讀取網頁 HTML 原始碼
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    
+    // 設定 3 秒內沒抓到 HTML 就直接跳 Fallback，不讓使用者乾等
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-  imgEl.onload = () => {
+    const response = await fetch(proxyUrl, { signal: controller.signal });
     clearTimeout(timeoutId);
-    if (isSettled) return;
-    isSettled = true;
-    if (loadingEl) loadingEl.style.display = 'none';
-    imgEl.style.display = 'block';
-  };
 
-  imgEl.onerror = () => {
-    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error();
+    const data = await response.json();
+    const htmlText = data.contents;
+
+    // 用正規表達式快速撈出 og:image 的內容
+    const ogImageMatch = htmlText.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) || 
+                         htmlText.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
+
+    if (ogImageMatch && ogImageMatch[1]) {
+      let ogImageUrl = ogImageMatch[1];
+      
+      // 如果撈出來的是相對路徑（例如 /img/cover.jpg），將它補滿成絕對路徑
+      if (ogImageUrl.startsWith('/')) {
+        const urlObj = new URL(url);
+        ogImageUrl = urlObj.origin + ogImageUrl;
+      }
+
+      // 將圖片塞給 <img> 標籤
+      imgEl.onload = () => {
+        if (loadingEl) loadingEl.style.display = 'none';
+        imgEl.style.display = 'block';
+      };
+      imgEl.onerror = () => switchToFallback();
+      imgEl.src = ogImageUrl;
+    } else {
+      // 沒找到 og:image 標籤，直接用高質感 Favicon 卡片替代
+      switchToFallback();
+    }
+  } catch (e) {
+    // 遇到 CORS 代理失敗或連線超時，直接優雅降級到 Favicon 卡片
     switchToFallback();
-  };
-
-  // 觸發載入
-  imgEl.src = previewImgSrc;
+  }
 }
 
 /* ============================================================
-   渲染書籤卡片 (已加入懶加載資料埋設)
+   渲染書籤卡片
    ============================================================ */
 window.renderCards = function() {
   const container = document.getElementById('listContainer');
@@ -639,18 +641,14 @@ window.renderCards = function() {
     return;
   }
 
-  // 重新初始化觀察器
   initCardObserver();
-
   container.innerHTML = '';
+  
   filtered.forEach(item => {
     const card = document.createElement('div');
     card.className = 'card';
-    
-    // 【效能優化】將資料埋在節點屬性上，交給 Observer 觸發載入
     card.dataset.id = item.id;
     card.dataset.url = item.url;
-    card.dataset.title = item.title || getDomain(item.url);
 
     const isFav = item.category === 'favorite';
     const badgeText = isFav ? '⭐ 我的最愛' : '日常';
@@ -659,11 +657,10 @@ window.renderCards = function() {
     card.innerHTML = `
       <div class="thumbnail-box" id="thumb-box-${item.id}">
         <div class="thumb-loading" id="loading-${item.id}"></div>
-        
         <img class="preview-img" id="thumb-${item.id}" alt="網頁預覽">
         
         <div class="thumb-fallback-card" id="fb-${item.id}" style="display:none;">
-          <img class="fallback-fav" id="fb-fav-${item.id}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><text y=%2220%22 font-size=%2220%22>🔗</text></svg>_'">
+          <img class="fallback-fav" id="fb-fav-${item.id}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><text y=%2220%22 font-size=%2220%22>🔗</text></svg>'">
           <div class="fallback-text">${escHtml(item.title || getDomain(item.url))}</div>
         </div>
       </div>
@@ -681,8 +678,6 @@ window.renderCards = function() {
       </div>
     `;
     container.appendChild(card);
-
-    // 註冊觀察這張卡片
     cardObserver.observe(card);
   });
 };
