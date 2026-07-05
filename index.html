@@ -143,7 +143,6 @@
     }
     .card:hover { transform: translateY(-3px); box-shadow: 0 6px 18px rgba(0,0,0,0.1); }
     
-    /* 改良版縮圖外殼：確保絕對不留白 */
     .thumbnail-box {
       width: 100%; height: 148px;
       background: linear-gradient(135deg, #e0e6ed, #b3c6d8);
@@ -152,7 +151,6 @@
     .thumbnail-box img {
       width: 100%; height: 100%; object-fit: cover; display: block;
     }
-    /* 當完全抓不到圖時的「質感系文字替代圖卡」 */
     .thumb-fallback-card {
       position: absolute; top:0; left:0; width:100%; height:100%;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -491,6 +489,14 @@ window.addRecord = async function() {
   let finalUrl = url;
   if (!/^https?:\/\//i.test(url)) finalUrl = 'https://' + url;
 
+  // 【新增功能】檢查重複網址
+  const duplicate = records.find(r => r.url.toLowerCase() === finalUrl.toLowerCase());
+  if (duplicate) {
+    const catName = (duplicate.category === 'favorite') ? '⭐ 我的最愛' : '一般日常';
+    const confirmAdd = confirm(`⚠️ 注意：此網址已經存在於【${catName}】分類中！\n標題為：${duplicate.title}\n\n確定還要重複新增嗎？`);
+    if (!confirmAdd) return; // 使用者按取消，終止新增
+  }
+
   try {
     await addDoc(collection(db, 'bookmarks'), {
       ownerId: currentUser.uid,
@@ -551,13 +557,14 @@ window.renderCards = function() {
     const badgeText = isFav ? '⭐ 我的最愛' : '日常';
     const badgeClass = isFav ? 'card-badge favorite' : 'card-badge';
     
-    // 取得該網站的 Favicon 與 Linkpreview 預覽圖
     const faviconSrc = getFaviconUrl(item.url);
-    const previewImgSrc = `https://api.linkpreview.net/?key=common_fallback&q=${encodeURIComponent(item.url)}`;
+    
+    // 改用更強大、專門穿透保護的獨立無頭瀏覽器截圖端點（不帶 API key 限制，直出畫面）
+    const previewImgSrc = `https://mini.s-shot.ru/1024x768/JPEG/400/Z100/?${encodeURIComponent(item.url)}`;
 
     card.innerHTML = `
       <div class="thumbnail-box">
-        <img id="thumb-${item.id}" src="${previewImgSrc}" alt="" 
+        <img id="thumb-${item.id}" src="${previewImgSrc}" alt="網頁預覽" 
           onerror="document.getElementById('fb-${item.id}').style.display='flex'; this.style.display='none';">
         
         <div class="thumb-fallback-card" id="fb-${item.id}" style="display:none;">
